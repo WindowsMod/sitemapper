@@ -262,4 +262,32 @@ describe('Sitemapper', function () {
       });
     });
   });
+
+  describe('limitElements property should return the correct count of elements', function () {
+    beforeEach(() => {
+      sitemapper = new Sitemapper({
+        requestHeaders: {
+          'Accept-Encoding': 'gzip,deflate,sdch',
+        },
+        limitElements: 5,
+      });
+    });
+
+    it('https://wp.seantburke.com/sitemap.xml return sites array with limit of 5 elements', function (done) {
+      this.timeout(30000);
+      const url = 'https://wp.seantburke.com/sitemap.xml';
+      sitemapper.fetch(url)
+        .then(data => {
+          data.sites.should.be.Array;
+          data.url.should.equal(url);
+          data.sites.length.should.equal(5);
+          isUrl(data.sites[0]).should.be.true;
+          done();
+        })
+        .catch(error => {
+          console.error('Test failed');
+          done(error);
+        });
+    });
+  });
 });

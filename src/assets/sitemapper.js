@@ -27,6 +27,7 @@ export default class Sitemapper {
    * @params {integer} [options.retries] - The maximum number of retries to attempt when crawling fails (e.g. 1 for 1 retry, 2 attempts in total)
    * @params {boolean} [options.rejectUnauthorized] - If true (default), it will throw on invalid certificates, such as expired or self-signed ones.
    * @params {lastmod} [options.lastmod] - the minimum lastmod value for urls
+   * @params {limitElements} [options.limitElements] - Trim output array length of sitemap links
    *
    * @example let sitemap = new Sitemapper({
    *   url: 'https://wp.seantburke.com/sitemap.xml',
@@ -44,9 +45,9 @@ export default class Sitemapper {
     this.debug = settings.debug;
     this.concurrency = settings.concurrency || 10;
     this.retries = settings.retries || 0;
-    this.rejectUnauthorized =
-      settings.rejectUnauthorized === false ? false : true;
+    this.rejectUnauthorized = settings.rejectUnauthorized !== false;
     this.fields = settings.fields || false;
+    this.limitElements = settings.limitElements || 0;
   }
 
   /**
@@ -346,22 +347,44 @@ export default class Sitemapper {
 
         // Parse all child urls within the concurrency limit in the settings
         const limit = pLimit(this.concurrency);
-        const promiseArray = sitemap.map((site) =>
-          limit(() => this.crawl(site))
-        );
 
-        // Make sure all the promises resolve then filter and reduce the array
-        const results = await Promise.all(promiseArray);
-        const sites = results
-          .filter((result) => result.errors.length === 0)
-          .reduce((prev, { sites }) => [...prev, ...sites], []);
-        const errors = results
-          .filter((result) => result.errors.length !== 0)
-          .reduce((prev, { errors }) => [...prev, ...errors], []);
+        let results = [];
+        let errors = [];
+
+        let isLimitElements = false
+        for (const site of sitemap) {
+          try {
+            const result = await limit(() => this.crawl(site));
+
+            if (result.errors.length === 0) {
+              if(this.limitElements) {
+                if(results.length >= this.limitElements) {
+                  isLimitElements = true
+                } else {
+                  results.push(...result.sites);
+                }
+              } else if(!this.limitElements) {
+                results.push(...result.sites);
+              }
+            } else {
+              errors.push(...result.errors);
+            }
+          } catch (error) {
+            errors.push(error.message);
+          }
+
+          if(isLimitElements) {
+            break;
+          }
+        }
+
+        if(isLimitElements) {
+          results = results.slice(0, this.limitElements);
+        }
 
         return {
-          sites,
-          errors,
+          sites: results,
+          errors: errors,
         };
       }
 
